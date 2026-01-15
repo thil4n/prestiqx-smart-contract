@@ -1,5 +1,5 @@
-const SimpleStorage = artifacts.require("SimpleStorage");
+const EventManager = artifacts.require("EventManager");
 
 module.exports = function (deployer) {
-    deployer.deploy(SimpleStorage);
+    deployer.deploy(EventManager);
 };
