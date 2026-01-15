@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: MIT
-pragma solidity >=0.4.22 <0.9.0;
+pragma solidity ^0.8.20;
 
-import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "./TicketNFT.sol";
 
-contract EventManager is ERC721, Ownable {
+contract EventManager is Ownable, ReentrancyGuard {
+    TicketNFT public ticketNFT;
+    uint256 public nextEventId;
+
     struct Event {
         uint256 id;
         address organizer;
@@ -21,21 +25,17 @@ contract EventManager is ERC721, Ownable {
         bool ended;
     }
 
-    uint256 public nextEventId;
-    uint256 public nextTicketId;
-
     mapping(uint256 => Event) public events;
+    mapping(uint256 => uint256[]) public eventTickets; // ticket IDs per event
+    mapping(uint256 => uint256) public ticketToEvent; // tokenId => eventId
 
-    uint256[] public allEvents;
-    mapping(address => uint256[]) public organizerEvents;
-    mapping(address => uint256[]) public eventTickets;
-
-    mapping(uint256 => uint256) public ticketToEvent;
-
-    constructor() ERC721("EventTicket", "ETICKET") Ownable(msg.sender) {
-        // Initialization if needed
+    constructor(address _ticketNFT) {
+        ticketNFT = TicketNFT(_ticketNFT);
     }
 
+    // ------------------------
+    // Create Event
+    // ------------------------
     function createEvent(
         string memory title,
         string memory date,
@@ -45,9 +45,8 @@ contract EventManager is ERC721, Ownable {
         string memory image,
         uint256 ticketPrice,
         uint256 totalTickets
-    ) external {
+    ) external onlyOwner {
         uint256 eventId = nextEventId++;
-
         events[eventId] = Event({
             id: eventId,
             organizer: msg.sender,
@@ -64,35 +63,42 @@ contract EventManager is ERC721, Ownable {
             ended: false
         });
 
-        organizerEvents[msg.sender].push(eventId);
-        allEvents.push(eventId);
+        // Mint NFT tickets to EventManager contract
+        for (uint256 i = 0; i < totalTickets; i++) {
+            uint256 tokenId = ticketNFT.mintTicket(address(this), "");
+            eventTickets[eventId].push(tokenId);
+            ticketToEvent[tokenId] = eventId;
+        }
     }
 
-    function getOrganizerEvents(
-        address organizer
-    ) external view returns (uint256[] memory) {
-        return organizerEvents[organizer];
-    }
-    function getAllEvents() external view returns (uint256[] memory) {
-        return allEvents;
-    }
-
-    function getEvent(uint256 eventId) external view returns (Event memory) {
-        return events[eventId];
-    }
-
-    function buyTicket(uint256 eventId) external payable {
+    // ------------------------
+    // Buy Ticket
+    // ------------------------
+    function buyTicket(
+        uint256 eventId,
+        string memory tokenURI
+    ) external payable nonReentrant {
         Event storage e = events[eventId];
-        require(e.id == eventId, "Event does not exist");
         require(!e.ended, "Event ended");
         require(e.ticketsSold < e.totalTickets, "Sold out");
-        require(msg.value >= e.ticketPrice, "Not enough ETH sent");
+        require(msg.value == e.ticketPrice, "Incorrect ETH");
 
-        // Mint NFT ticket
-        uint256 ticketId = nextTicketId++;
-        _mint(msg.sender, ticketId);
-        ticketToEvent[ticketId] = eventId;
+        // Transfer next available ticket to buyer
+        uint256 ticketId = eventTickets[eventId][e.ticketsSold];
+        ticketNFT.mintTicket(msg.sender, tokenURI); // optional: update metadata
+        ticketNFT.safeTransferFrom(address(this), msg.sender, ticketId);
 
         e.ticketsSold++;
+    }
+
+    // ------------------------
+    // Admin Functions
+    // ------------------------
+    function withdraw() external onlyOwner {
+        payable(owner()).transfer(address(this).balance);
+    }
+
+    function endEvent(uint256 eventId) external onlyOwner {
+        events[eventId].ended = true;
     }
 }
