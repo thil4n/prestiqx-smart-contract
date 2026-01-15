@@ -26,6 +26,10 @@ contract EventManager is Ownable, ReentrancyGuard {
     }
 
     mapping(uint256 => Event) public events;
+
+    uint256[] public allEvents;
+    mapping(address => uint256[]) public organizerEvents;
+
     mapping(uint256 => uint256[]) public eventTickets; // ticket IDs per event
     mapping(uint256 => uint256) public ticketToEvent; // tokenId => eventId
 
@@ -62,6 +66,9 @@ contract EventManager is Ownable, ReentrancyGuard {
             published: false,
             ended: false
         });
+
+        organizerEvents[msg.sender].push(eventId);
+        allEvents.push(eventId);
 
         // Mint NFT tickets to EventManager contract
         for (uint256 i = 0; i < totalTickets; i++) {
