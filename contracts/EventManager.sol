@@ -91,6 +91,19 @@ contract EventManager is Ownable, ReentrancyGuard {
         e.ticketsSold++;
     }
 
+    function getOrganizerEvents(
+        address organizer
+    ) external view returns (uint256[] memory) {
+        return organizerEvents[organizer];
+    }
+    function getAllEvents() external view returns (uint256[] memory) {
+        return allEvents;
+    }
+
+    function getEvent(uint256 eventId) external view returns (Event memory) {
+        return events[eventId];
+    }
+
     // ------------------------
     // Admin Functions
     // ------------------------
