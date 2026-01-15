@@ -33,8 +33,14 @@ contract EventManager is Ownable, ReentrancyGuard {
     mapping(uint256 => uint256[]) public eventTickets; // ticket IDs per event
     mapping(uint256 => uint256) public ticketToEvent; // tokenId => eventId
 
-    constructor(address _ticketNFT) {
+    mapping(address => uint256) public pendingWithdrawals;
+
+    uint256 public platformFeeBps = 500; // 5%
+    address public platformTreasury;
+
+    constructor(address _ticketNFT, address _platformTreasury) {
         ticketNFT = TicketNFT(_ticketNFT);
+        platformTreasury = _platformTreasury;
     }
 
     // ------------------------
@@ -50,7 +56,11 @@ contract EventManager is Ownable, ReentrancyGuard {
         uint256 ticketPrice,
         uint256 totalTickets
     ) external {
+        require(ticketPrice > 0, "PRICE_ZERO");
+        require(totalTickets > 0, "NO_TICKETS");
+
         uint256 eventId = nextEventId++;
+
         events[eventId] = Event({
             id: eventId,
             organizer: msg.sender,
@@ -63,19 +73,12 @@ contract EventManager is Ownable, ReentrancyGuard {
             ticketPrice: ticketPrice,
             totalTickets: totalTickets,
             ticketsSold: 0,
-            published: false,
+            published: true,
             ended: false
         });
 
         organizerEvents[msg.sender].push(eventId);
         allEvents.push(eventId);
-
-        // Mint NFT tickets to EventManager contract
-        for (uint256 i = 0; i < totalTickets; i++) {
-            uint256 tokenId = ticketNFT.mintTicket(address(this), "");
-            eventTickets[eventId].push(tokenId);
-            ticketToEvent[tokenId] = eventId;
-        }
     }
 
     // ------------------------
@@ -86,16 +89,30 @@ contract EventManager is Ownable, ReentrancyGuard {
         string memory tokenURI
     ) external payable nonReentrant {
         Event storage e = events[eventId];
-        require(!e.ended, "Event ended");
-        require(e.ticketsSold < e.totalTickets, "Sold out");
-        require(msg.value == e.ticketPrice, "Incorrect ETH");
 
-        // Transfer next available ticket to buyer
-        uint256 ticketId = eventTickets[eventId][e.ticketsSold];
-        ticketNFT.mintTicket(msg.sender, tokenURI); // optional: update metadata
-        ticketNFT.safeTransferFrom(address(this), msg.sender, ticketId);
+        require(!e.ended, "EVENT_ENDED");
+        require(e.ticketsSold < e.totalTickets, "SOLD_OUT");
+        require(msg.value == e.ticketPrice, "BAD_PRICE");
+
+        // Mint NFT directly to buyer
+        ticketNFT.mintTicket(msg.sender, tokenURI);
+
+        // ---- Payment split ----
+        uint256 fee = (msg.value * platformFeeBps) / 10_000;
+        uint256 organizerAmount = msg.value - fee;
+
+        pendingWithdrawals[e.organizer] += organizerAmount;
+        pendingWithdrawals[platformTreasury] += fee;
 
         e.ticketsSold++;
+    }
+
+    function withdraw() external nonReentrant {
+        uint256 amount = pendingWithdrawals[msg.sender];
+        require(amount > 0, "NO_FUNDS");
+
+        pendingWithdrawals[msg.sender] = 0;
+        payable(msg.sender).transfer(amount);
     }
 
     function getOrganizerEvents(
