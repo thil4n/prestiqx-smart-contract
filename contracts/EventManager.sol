@@ -49,7 +49,7 @@ contract EventManager is Ownable, ReentrancyGuard {
         string memory image,
         uint256 ticketPrice,
         uint256 totalTickets
-    ) external onlyOwner {
+    ) external {
         uint256 eventId = nextEventId++;
         events[eventId] = Event({
             id: eventId,
