@@ -20,6 +20,8 @@ contract EventManager {
 
     uint256 public nextEventId;
     mapping(uint256 => Event) public events;
+
+    uint256[] public allEvents;
     mapping(address => uint256[]) public organizerEvents;
 
     function createEvent(
@@ -51,12 +53,16 @@ contract EventManager {
         });
 
         organizerEvents[msg.sender].push(eventId);
+        allEvents.push(eventId);
     }
 
     function getOrganizerEvents(
         address organizer
     ) external view returns (uint256[] memory) {
         return organizerEvents[organizer];
+    }
+    function getAllEvents() external view returns (uint256[] memory) {
+        return allEvents;
     }
 
     function getEvent(uint256 eventId) external view returns (Event memory) {
